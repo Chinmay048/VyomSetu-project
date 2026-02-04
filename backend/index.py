@@ -1,15 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
-import sys
-import os
+from typing import List, Optional
+import math
+import random
 
-# Add parent directory to path to import main
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+import weather
 from main import (
-    Point, PlanningRequest, TECH_MATRIX, DEFAULT_TECH,
+    Point, PlanningRequest, RerouteRequest, TECH_MATRIX, DEFAULT_TECH,
     generate_grid, optimize_network, get_dist_km
 )
 
@@ -22,6 +20,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+async def health_check():
+    return {"status": "healthy", "message": "VyomSetu Backend is running"}
 
 @app.post("/calculate-plan")
 async def calculate_plan(data: PlanningRequest):
@@ -68,4 +70,29 @@ async def calculate_plan(data: PlanningRequest):
         "links": links,
         "logs": logs,
         "towers": towers
+    }
+
+@app.get("/weather-resilience/{village_id}")
+async def get_weather_resilience(village_id: str, tech_type: str, simulate: bool = False):
+    return weather.check_resilience(village_id, tech_type, simulate)
+
+@app.post("/reroute-network")
+async def reroute_network(data: RerouteRequest):
+    dead_node = next((t for t in data.towers if t["id"] == data.dead_node_id), None)
+    if not dead_node:
+        return {"error": "Node not found"}
+    
+    active_towers = [t for t in data.towers if t["id"] != data.dead_node_id]
+    new_links = []
+    
+    if active_towers:
+        nearest_neighbor = min(active_towers, key=lambda t: get_dist_km(t["lat"], t["lng"], dead_node["lat"], dead_node["lng"]))
+        new_links.append({
+            "from": [nearest_neighbor["lat"], nearest_neighbor["lng"]],
+            "to": [dead_node["lat"], dead_node["lng"]]
+        })
+    
+    return {
+        "status": "REROUTED",
+        "new_links": new_links
     }
