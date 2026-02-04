@@ -45,31 +45,39 @@ export default function StormShieldPanel({ result, selectedVillage, onDisasterSt
                 setTimeLeft(secondsLeft);
 
                 // --- LOGIC: ENABLE BUTTON AT 10 SECONDS ---
-                if (secondsLeft <= 10 && secondsLeft > 0 && droneState === "PREPARING") {
-                    setDroneState("READY");
-                    setLogs(prev => [`[SYSTEM] DRONE FLIGHT SYSTEMS ONLINE. READY TO LAUNCH.`, ...prev]);
-                }
+                setDroneState(prevState => {
+                    if (secondsLeft <= 10 && secondsLeft > 0 && prevState === "PREPARING") {
+                        setLogs(prev => [`[SYSTEM] DRONE FLIGHT SYSTEMS ONLINE. READY TO LAUNCH.`, ...prev]);
+                        return "READY";
+                    }
+                    return prevState;
+                });
 
                 // --- LOGIC: IMPACT AT 0 SECONDS ---
                 if (diff <= 0) {
                     setDisplayTime("00:00");
-                    if (!hasImpacted) {
-                        setHasImpacted(true);
-                        setLogs(prev => [`[CRITICAL] IMPACT CONFIRMED. NODE FAILURE DETECTED.`, ...prev]);
-                        // Deploy drone after impact if armed
-                        if (droneState === "ARMED") {
-                            setTimeout(() => deployDroneOnImpact(), 500);
+                    setHasImpacted(prevHasImpacted => {
+                        if (!prevHasImpacted) {
+                            setLogs(prev => [`[CRITICAL] IMPACT CONFIRMED. NODE FAILURE DETECTED.`, ...prev]);
+                            // Deploy drone after impact if armed
+                            setDroneState(prevState => {
+                                if (prevState === "ARMED") {
+                                    setTimeout(() => deployDroneOnImpact(), 500);
+                                }
+                                return prevState;
+                            });
+                            // Trigger Map Animation (pass the specific disaster info)
+                            if(onDisasterStart) onDisasterStart(true, weatherData);
                         }
-                        // Trigger Map Animation (pass the specific disaster info)
-                        if(onDisasterStart) onDisasterStart(true, weatherData);
-                    }
+                        return true;
+                    });
                 } else {
                     setDisplayTime(`00:${secondsLeft.toString().padStart(2, '0')}`);
                 }
             }, 500);
             return () => clearInterval(interval);
         }
-    }, [weatherData, isSimulating, hasImpacted, droneState]);
+    }, [weatherData, isSimulating]);
 
     // HANDLER: ARM THE DRONE
     const handleArmDrone = () => {
