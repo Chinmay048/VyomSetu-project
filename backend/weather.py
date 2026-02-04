@@ -1,95 +1,71 @@
-from pydantic import BaseModel
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
-class NetworkPolicy(BaseModel):
-    status: str
-    bandwidth_cap: int
-    allowed_apps: list
-    blocked_apps: list
-    priority_msg: str
+# Global state to prevent UI flickering
+CURRENT_STATE = None
 
-class WeatherResponse(BaseModel):
-    village_id: str
-    condition: str
-    temp: str
-    severity_score: int
-    is_sos_triggered: bool
-    resilience_score: int
-    alert_message: str
-    network_policy: NetworkPolicy
-    timestamp: str 
-
-SCENARIOS = {
-    "chitkul": {"real": {"cond": "Clear", "sev": 10}, "sim": {"cond": "Blizzard", "sev": 90}},
-    "kalpa":   {"real": {"cond": "Cloudy", "sev": 30}, "sim": {"cond": "High Winds", "sev": 75}},
-    "langza":  {"real": {"cond": "Sunny", "sev": 0},  "sim": {"cond": "Storm", "sev": 60}}
-}
-
-def get_qos_policy(severity: int) -> NetworkPolicy:
-    if severity < 40:
-        return NetworkPolicy(
-            status="OPTIMAL",
-            bandwidth_cap=100,
-            allowed_apps=["Voice", "4K Video", "Social Media", "Gaming"],
-            blocked_apps=[],
-            priority_msg="Standard Routing Active."
-        )
-    elif severity < 80:
-        return NetworkPolicy(
-            status="THROTTLED",
-            bandwidth_cap=50,
-            allowed_apps=["Voice", "WhatsApp", "Browsing"],
-            blocked_apps=["Netflix", "Gaming", "Downloads"],
-            priority_msg="⚠ High Latency detected. Non-essential traffic shaped."
-        )
-    else:
-        return NetworkPolicy(
-            status="CRITICAL / SOS",
-            bandwidth_cap=10,
-            allowed_apps=["SOS Calls", "Medical Data", "Govt Alerts"],
-            blocked_apps=["ALL ENTERTAINMENT", "Social Media", "Video"],
-            priority_msg="⛔ LIFE-LINE PROTOCOL. BANDWIDTH LOCKED FOR EMERGENCIES."
-        )
-
-def check_resilience(village_id: str, tech_type: str, simulate: bool = False) -> WeatherResponse:
-    mode_key = "sim" if simulate else "real"
-    base = SCENARIOS.get(village_id, SCENARIOS["chitkul"])[mode_key]
+def check_resilience(village_id, tech_type, simulate=False):
+    global CURRENT_STATE
     
-    # VOLATILITY FIX: Make it jump around more during simulation
+    base_conditions = ["Clear Sky", "Light Breeze", "Partly Cloudy", "Sunny", "Mist"]
+    
     if simulate:
-        jitter = random.randint(-25, 20) # Big swings
-        severity = min(100, max(10, base["sev"] + jitter))
-        # Randomly flip condition text for drama
-        conditions = ["Heavy Snow", "Whiteout", "Blizzard", "Gale Winds"] if base["cond"] == "Blizzard" else [base["cond"]]
-        curr_cond = random.choice(conditions)
+        if CURRENT_STATE and CURRENT_STATE.get("is_sos_triggered"):
+            CURRENT_STATE["timestamp"] = datetime.now().strftime("%H:%M:%S")
+            return CURRENT_STATE
+
+        # --- DEMO MODE: RANDOM DISASTER SELECTION ---
+        # 1. Flash Flood (Blue)
+        # 2. Forest Fire (Red)
+        # 3. Blizzard (White)
+        # 4. Landslide (Brown)
+        disaster_options = [
+            {"type": "Flash Flood Warning", "severity": 95, "cap": 15, "color": "#3b82f6"}, 
+            {"type": "Forest Fire",         "severity": 99, "cap": 5,  "color": "#ef4444"}, 
+            {"type": "Severe Blizzard",     "severity": 88, "cap": 10, "color": "#e5e7eb"}, 
+            {"type": "Landslide Alert",     "severity": 92, "cap": 0,  "color": "#78350f"}  
+        ]
+        scenario = random.choice(disaster_options)
+        
+        # --- FIXED DEMO TIME: IMPACT IN 15 SECONDS ---
+        now = datetime.now()
+        impact_dt = now + timedelta(seconds=15)
+        
+        policy = {
+            "status": "SOS PROTOCOL: THROTTLED",
+            "bandwidth_cap": scenario["cap"],
+            "allowed_apps": ["Emergency Calls Only", "Govt Radio"],
+            "blocked_apps": ["Netflix", "YouTube", "Instagram", "Gaming"]
+        }
+        
+        CURRENT_STATE = {
+            "is_sos_triggered": True,
+            "condition": scenario["type"],
+            "severity_score": scenario["severity"],
+            "connectivity_score": 10,
+            "network_policy": policy,
+            "alert_message": f"CRITICAL: {scenario['type'].upper()} IMMINENT.",
+            "impact_time_display": impact_dt.strftime("%H:%M:%S"), 
+            "impact_timestamp": impact_dt.isoformat(),
+            "timestamp": now.strftime("%H:%M:%S"),
+            "visual_color": scenario["color"] # Sends color to frontend
+        }
+        return CURRENT_STATE
+
     else:
-        severity = base["sev"]
-        curr_cond = base["cond"]
-
-    # Tech Resilience Logic
-    resilience = 100
-    if "Satellite" in tech_type:
-        resilience = 95 if severity > 80 else 100
-    elif "Microwave" in tech_type:
-        resilience = max(0, 100 - (severity * 1.2)) # Fades fast
-    elif "Fiber" in tech_type:
-        resilience = 100 if severity < 85 else 40 # Snap risk
-
-    sos = severity > 80 or resilience < 40
-    policy = get_qos_policy(severity)
-    
-    alert = "All Systems Nominal"
-    if sos: alert = f"CRITICAL ALERT: {curr_cond} exceeding safety limits."
-
-    return WeatherResponse(
-        village_id=village_id,
-        condition=curr_cond,
-        temp=f"{random.randint(-15, -5)}°C" if village_id=="chitkul" else "12°C",
-        severity_score=severity,
-        is_sos_triggered=sos,
-        resilience_score=int(resilience),
-        alert_message=alert,
-        network_policy=policy,
-        timestamp=datetime.now().strftime("%H:%M:%S")
-    )
+        CURRENT_STATE = None 
+        condition = random.choice(base_conditions)
+        return {
+            "is_sos_triggered": False,
+            "condition": condition,
+            "severity_score": random.randint(2, 10),
+            "connectivity_score": 100,
+            "network_policy": {
+                "status": "STANDARD ACCESS",
+                "bandwidth_cap": 100,
+                "allowed_apps": ["All Services Active"],
+                "blocked_apps": []
+            },
+            "alert_message": "System Normal.",
+            "timestamp": datetime.now().strftime("%H:%M:%S")
+        }
