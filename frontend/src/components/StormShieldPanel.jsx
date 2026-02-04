@@ -90,7 +90,7 @@ export default function StormShieldPanel({ result, selectedVillage, onDisasterSt
         try {
             if (!result || !result.terrain_breakdown) return;
             const techType = encodeURIComponent(result.terrain_breakdown.tech);
-            const res = await axios.get(`http://127.0.0.1:8000/weather-resilience/${selectedVillage.id}?tech_type=${techType}&simulate=${simulate}`);
+            const res = await axios.get(`https://vyomsetu-backend.vercel.app/weather-resilience/${selectedVillage.id}?tech_type=${techType}&simulate=${simulate}`);
             
             if (!weatherData || weatherData.timestamp !== res.data.timestamp) {
                 setWeatherData(res.data);

@@ -14,7 +14,7 @@ export default function SelfHealingPanel({ result, onKillNode, onReroute }) {
         onKillNode(selectedNode); 
         
         try {
-            const res = await axios.post('http://127.0.0.1:8000/reroute-network', {
+            const res = await axios.post('https://vyomsetu-backend.vercel.app/reroute-network', {
                 towers: result.towers,
                 dead_node_id: selectedNode
             });

@@ -134,7 +134,7 @@ export default function Dashboard() {
     const finalPolygons = [...polygons];
     if (currentPoly.length > 2) finalPolygons.push(currentPoly);
     try {
-      const res = await axios.post('http://127.0.0.1:8000/calculate-plan', { polygons: finalPolygons, critical_nodes: hospitals, terrain_type: selectedVillage.terrain });
+      const res = await axios.post('https://vyomsetu-backend.vercel.app/calculate-plan', { polygons: finalPolygons, critical_nodes: hospitals, terrain_type: selectedVillage.terrain });
       setTimeout(() => { setResult(res.data); setLoading(false); }, 800);
     } catch (err) { alert("Backend Offline!"); setLoading(false); }
   };
