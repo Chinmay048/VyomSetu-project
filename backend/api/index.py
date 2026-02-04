@@ -6,12 +6,12 @@ import os
 # Add parent directory to path to import modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import app as main_app
+from main import app
 
-# The main app with all routes
-app = main_app
+# Export the app for Vercel
+app = app
 
-# Ensure CORS middleware is properly configured for Vercel
+# Ensure CORS middleware is properly configured
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
