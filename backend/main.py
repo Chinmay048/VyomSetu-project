@@ -26,6 +26,12 @@ class RerouteRequest(BaseModel):
     towers: List[dict]
     dead_node_id: str
 
+class DroneDeploymentRequest(BaseModel):
+    affected_node_id: str
+    affected_node_lat: float
+    affected_node_lng: float
+    towers: List[dict]
+
 # --- CONFIG: TECH MATRIX (MARKET-ACCURATE TCO) ---
 # Costs in INR (₹). Represents CAPEX + 1 Year Critical Maintenance/License.
 TECH_MATRIX = {
@@ -58,6 +64,45 @@ DEFAULT_TECH = {
     "range": 5.0, 
     "cost": 2500000, 
     "legacy_cost": 3000000 
+}
+
+# --- DRONE CONFIGURATION ---
+DRONE_CONFIG = {
+    "type": "Mesh-Relay Drone",
+    "speed_kmh": 50,  # ~14 m/s for rural deployment
+    "range": 2.5,  # Can relay up to 2.5km
+    "cost": 150000,  # ₹1.5L per deployment
+    "setup_time_sec": 5  # Time to deploy
+}
+
+# --- EMERGENCY SERVICES & BANDWIDTH PRIORITY ---
+EMERGENCY_SERVICES = {
+    "critical": [
+        "emergency.gov.in",
+        "ndma.gov.in", 
+        "icmr.gov.in",
+        "helpline.in",
+        "police.gov.in",
+        "ambulance.gov.in",
+        "sos-alert.com",
+        "disaster-alert.in"
+    ],
+    "blocked": [
+        "netflix.com",
+        "youtube.com", 
+        "instagram.com",
+        "facebook.com",
+        "twitter.com",
+        "tiktok.com",
+        "gaming.com",
+        "streaming.com"
+    ],
+    "throttled": [
+        "gmail.com",
+        "whatsapp.com",
+        "telegram.com",
+        "email-services.com"
+    ]
 }
 
 # --- GEOMETRY HELPERS ---
@@ -269,6 +314,92 @@ async def calculate_plan(data: PlanningRequest):
 @app.get("/weather-resilience/{village_id}")
 async def get_weather_resilience(village_id: str, tech_type: str, simulate: bool = False):
     return weather.check_resilience(village_id, tech_type, simulate)
+
+# --- PHASE 2: DRONE DEPLOYMENT LOGIC ---
+@app.post("/drone-deploy")
+async def deploy_drone(data: DroneDeploymentRequest):
+    """
+    Phase 2: Deploy drone from nearest neighbor tower to affected node.
+    Simulates 15 sec impact time + drone travel + bandwidth throttling.
+    """
+    affected_node = {
+        "id": data.affected_node_id,
+        "lat": data.affected_node_lat,
+        "lng": data.affected_node_lng
+    }
+    
+    # Find nearest neighbor tower (not affected)
+    nearest_tower = None
+    min_distance = float('inf')
+    
+    for tower in data.towers:
+        if tower["id"] != data.affected_node_id:
+            dist = get_dist_km(tower["lat"], tower["lng"], affected_node["lat"], affected_node["lng"])
+            if dist < min_distance:
+                min_distance = dist
+                nearest_tower = tower
+    
+    if not nearest_tower:
+        return {
+            "status": "ERROR",
+            "message": "No neighbor tower available for drone dispatch",
+            "services": {"critical": [], "blocked": [], "throttled": []}
+        }
+    
+    # Calculate drone travel time (in seconds)
+    drone_travel_distance = min_distance
+    drone_speed_km_per_sec = DRONE_CONFIG["speed_kmh"] / 3600
+    drone_travel_time = (drone_travel_distance / drone_speed_km_per_sec) if drone_speed_km_per_sec > 0 else 5
+    
+    # Impact timeline
+    impact_time = 15  # 15 seconds before impact
+    total_deployment_time = impact_time + DRONE_CONFIG["setup_time_sec"] + drone_travel_time
+    
+    # Bandwidth status during emergency
+    services_status = {
+        "critical": [
+            {"service": s, "status": "ONLINE", "priority": "CRITICAL", "bandwidth": "UNLIMITED"} 
+            for s in EMERGENCY_SERVICES["critical"]
+        ],
+        "blocked": [
+            {"service": s, "status": "BLOCKED", "priority": "NON-ESSENTIAL", "bandwidth": "0%"} 
+            for s in EMERGENCY_SERVICES["blocked"]
+        ],
+        "throttled": [
+            {"service": s, "status": "THROTTLED", "priority": "LOW", "bandwidth": "25%"} 
+            for s in EMERGENCY_SERVICES["throttled"]
+        ]
+    }
+    
+    return {
+        "status": "DRONE_DEPLOYED",
+        "timeline": {
+            "impact_seconds": impact_time,
+            "drone_setup_sec": DRONE_CONFIG["setup_time_sec"],
+            "drone_travel_distance_km": round(drone_travel_distance, 2),
+            "drone_travel_time_sec": round(drone_travel_time, 2),
+            "total_deployment_time_sec": round(total_deployment_time, 2)
+        },
+        "drone_info": {
+            "type": DRONE_CONFIG["type"],
+            "speed_kmh": DRONE_CONFIG["speed_kmh"],
+            "relay_range_km": DRONE_CONFIG["range"],
+            "cost": DRONE_CONFIG["cost"],
+            "status": "EN_ROUTE"
+        },
+        "deployment": {
+            "from_tower": nearest_tower["id"],
+            "from_location": [nearest_tower["lat"], nearest_tower["lng"]],
+            "to_node": affected_node["id"],
+            "to_location": [affected_node["lat"], affected_node["lng"]],
+            "drone_path": [
+                [nearest_tower["lat"], nearest_tower["lng"]],
+                [affected_node["lat"], affected_node["lng"]]
+            ]
+        },
+        "services": services_status,
+        "message": f"DRONE DISPATCHED: Impact in {impact_time}s. Drone ETA: {round(drone_travel_time, 1)}s. Emergency services online. Non-essential streaming blocked."
+    }
 
 # --- PHASE 3: REROUTE LOGIC ---
 @app.post("/reroute-network")

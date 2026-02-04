@@ -56,6 +56,10 @@ export default function StormShieldPanel({ result, selectedVillage, onDisasterSt
                     if (!hasImpacted) {
                         setHasImpacted(true);
                         setLogs(prev => [`[CRITICAL] IMPACT CONFIRMED. NODE FAILURE DETECTED.`, ...prev]);
+                        // Deploy drone after impact if armed
+                        if (droneState === "ARMED") {
+                            setTimeout(() => deployDroneOnImpact(), 500);
+                        }
                         // Trigger Map Animation (pass the specific disaster info)
                         if(onDisasterStart) onDisasterStart(true, weatherData);
                     }
@@ -72,6 +76,37 @@ export default function StormShieldPanel({ result, selectedVillage, onDisasterSt
         setDroneState("ARMED");
         setLogs(prev => [`[SYSTEM] DRONE SQUADRON ARMED. AUTO-DEPLOY ON IMPACT.`, ...prev]);
         if (onDroneArm) onDroneArm(true); 
+    };
+
+    // HANDLER: DEPLOY DRONE WHEN IMPACT OCCURS
+    const deployDroneOnImpact = async () => {
+        if (!result || !result.towers || result.towers.length === 0) return;
+        
+        try {
+            // Select a random tower as affected node
+            const affectedTower = result.towers[Math.floor(Math.random() * result.towers.length)];
+            
+            const droneDeployPayload = {
+                affected_node_id: affectedTower.id,
+                affected_node_lat: affectedTower.lat,
+                affected_node_lng: affectedTower.lng,
+                towers: result.towers
+            };
+            
+            const droneRes = await axios.post('https://vyomsetu-backend.vercel.app/drone-deploy', droneDeployPayload);
+            
+            // Log drone deployment info
+            setLogs(prev => [
+                `[DRONE] DISPATCHED FROM ${droneRes.data.deployment.from_tower}`,
+                `[DRONE] ETA: ${droneRes.data.timeline.drone_travel_time_sec.toFixed(1)}s`,
+                `[SERVICES] Critical websites ONLINE | Streaming BLOCKED`,
+                `${droneRes.data.message}`,
+                ...prev
+            ].slice(0, 8));
+        } catch (err) {
+            console.error("Drone deployment error:", err);
+            setLogs(prev => [`[ERROR] Failed to deploy drone`, ...prev]);
+        }
     };
 
     // POLLING
